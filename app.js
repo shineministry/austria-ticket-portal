@@ -4,6 +4,7 @@
 
 const VAULT_KEY = 'atp.vault.v1';
 const THROTTLE_KEY = 'atp.throttle';
+const META_PATH = 'ticket-meta.json';
 const API_BASE = 'https://api.github.com';
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const UPLOAD_DELAY_MS = 350;
@@ -17,6 +18,26 @@ const KINDS = {
   archive: ['zip', 'rar', '7z', 'tar', 'gz']
 };
 const ALLOWED_EXTS = Object.values(KINDS).flat();
+
+const MIME_TYPES = {
+  pdf: 'application/pdf',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  txt: 'text/plain; charset=utf-8', csv: 'text/csv; charset=utf-8', md: 'text/plain; charset=utf-8',
+  json: 'application/json',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/x-m4v',
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac',
+  zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
+  tar: 'application/x-tar', gz: 'application/gzip'
+};
 
 /* ---------------- dom ---------------- */
 
@@ -46,6 +67,7 @@ const lightbox = $('#lightbox');
 
 const state = {
   files: [],
+  meta: new Map(), // path -> { name, type }
   view: localStorage.getItem('atp.view') || 'grid',
   query: '',
   busy: false
@@ -105,6 +127,10 @@ function kindOf(ext) {
     if (exts.includes(ext)) return kind;
   }
   return 'other';
+}
+
+function mimeOf(ext) {
+  return MIME_TYPES[ext] || 'application/octet-stream';
 }
 
 function safeName(name) {
@@ -552,16 +578,112 @@ async function listFiles() {
     .sort((a, b) => b.uploadedAt - a.uploadedAt);
 }
 
+async function fetchMetaRecord() {
+  let data;
+  try {
+    data = await gh(`${repoPath(vault.repo)}/contents/${encPath(META_PATH)}?ref=${encodeURIComponent(vault.branch)}`);
+  } catch (err) {
+    if (err.status === 404) return { sha: null, files: {} };
+    throw err;
+  }
+  let files = {};
+  try {
+    const bytes = VaultCrypto.fromBase64(String(data.content || '').replace(/\s/g, ''));
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    if (parsed && typeof parsed.files === 'object' && parsed.files) files = parsed.files;
+  } catch (_) { /* corrupt manifest — treat as empty */ }
+  return { sha: data.sha || null, files };
+}
+
+function applyMeta(files) {
+  state.meta = new Map(Object.entries(files || {}));
+}
+
+async function loadMeta() {
+  try {
+    const record = await fetchMetaRecord();
+    applyMeta(record.files);
+  } catch (_) { /* keep previous metadata */ }
+}
+
+async function putMeta(files, sha) {
+  const payload = JSON.stringify({ version: 1, files }, null, 2);
+  const body = {
+    message: 'meta: update ticket metadata',
+    content: VaultCrypto.toBase64(new TextEncoder().encode(payload)),
+    branch: vault.branch
+  };
+  if (sha) body.sha = sha;
+  return gh(`${repoPath(vault.repo)}/contents/${encPath(META_PATH)}`, { method: 'PUT', body });
+}
+
+async function updateMeta(changes) {
+  const record = await fetchMetaRecord();
+  const files = { ...record.files };
+  let changed = false;
+  for (const [path, value] of Object.entries(changes)) {
+    if (value === null) {
+      if (files[path]) { delete files[path]; changed = true; }
+    } else {
+      files[path] = value;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+
+  try {
+    await putMeta(files, record.sha);
+  } catch (err) {
+    if (err.status !== 409 && err.status !== 422) throw err;
+    const fresh = await fetchMetaRecord();
+    const retried = { ...fresh.files };
+    for (const [path, value] of Object.entries(changes)) {
+      if (value === null) delete retried[path];
+      else retried[path] = value;
+    }
+    await putMeta(retried, fresh.sha);
+    applyMeta(retried);
+    return;
+  }
+  applyMeta(files);
+}
+
+function metaFor(path) {
+  return state.meta.get(path) || null;
+}
+
+function metaSuffix(path) {
+  const m = state.meta.get(path);
+  if (!m) return '';
+  return [m.type, m.name].filter(Boolean).map((v) => ` · ${v}`).join('');
+}
+
+function metaChips(path) {
+  const m = state.meta.get(path);
+  if (!m || (!m.name && !m.type)) return '';
+  return `<div class="chips">${
+    m.name ? `<span class="chip">${esc(m.name)}</span>` : ''
+  }${
+    m.type ? `<span class="chip chip-accent">${esc(m.type)}</span>` : ''
+  }</div>`;
+}
+
 async function refreshList({ silent = false } = {}) {
   const files = await listFiles();
   state.files = files;
+  await loadMeta();
   render();
   if (!silent) toast('List refreshed', `${files.length} file${files.length === 1 ? '' : 's'}`);
 }
 
 function visibleFiles() {
   const q = state.query.trim().toLowerCase();
-  return state.query ? state.files.filter((f) => f.name.toLowerCase().includes(q)) : state.files;
+  if (!q) return state.files;
+  return state.files.filter((file) => {
+    const m = metaFor(file.path);
+    const haystack = `${file.name} ${m && m.name ? m.name : ''} ${m && m.type ? m.type : ''}`.toLowerCase();
+    return haystack.includes(q);
+  });
 }
 
 function thumbMarkup(file) {
@@ -581,8 +703,9 @@ function cardMarkup(file) {
       ${thumbMarkup(file)}
       <div class="file-body">
         <h3 class="file-name" title="${esc(file.name)}">${esc(file.name)}</h3>
-        <p class="file-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}</p>
-        <span class="list-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}</span>
+        <p class="file-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}${esc(metaSuffix(file.path))}</p>
+        ${metaChips(file.path)}
+        <span class="list-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}${esc(metaSuffix(file.path))}</span>
         <div class="file-actions">
           <button class="btn btn-outline btn-sm" data-download="${esc(file.path)}">Download</button>
           ${previewable ? `<button class="btn btn-ghost btn-sm" data-preview="${esc(file.path)}">Preview</button>` : ''}
@@ -665,6 +788,11 @@ filesEl.addEventListener('click', async (event) => {
       });
       revokeBlob(path);
       state.files = state.files.filter((f) => f.path !== path);
+      if (state.meta.has(path)) {
+        updateMeta({ [path]: null })
+          .then(() => render())
+          .catch((mErr) => toast('File deleted, metadata kept', mErr.message || 'Could not update manifest.', 'error'));
+      }
       render();
       toast('File deleted', file.name);
     } catch (err) {
@@ -712,7 +840,10 @@ function ensureBlob(path) {
   if (cached) return cached.promise;
 
   const promise = gh(`${repoPath(vault.repo)}/contents/${encPath(path)}`, { raw: true })
-    .then((blob) => {
+    .then((raw) => {
+      // GitHub raw often returns application/octet-stream — browsers need the
+      // real type (esp. application/pdf) or previews render blank.
+      const blob = new Blob([raw], { type: mimeOf(extOf(path)) });
       const url = URL.createObjectURL(blob);
       blobCache.set(path, { promise, url });
       evictBlobs();
@@ -757,7 +888,7 @@ async function openPreview(path) {
   const token = ++previewToken;
 
   $('#lb-name').textContent = file.name;
-  $('#lb-sub').textContent = `${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}`;
+  $('#lb-sub').textContent = `${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}${metaSuffix(path)}`;
   const download = $('#lb-download');
   download.removeAttribute('href');
   download.setAttribute('aria-disabled', 'true');
@@ -781,6 +912,10 @@ async function openPreview(path) {
   download.href = url;
   download.setAttribute('download', file.name);
   download.removeAttribute('aria-disabled');
+
+  const openBtn = $('#lb-open');
+  openBtn.hidden = file.ext !== 'pdf';
+  openBtn.onclick = () => window.open(url, '_blank', 'noopener');
 
   if (file.kind === 'image') {
     body.innerHTML = `<img src="${url}" alt="${esc(file.name)}" />`;
@@ -897,6 +1032,10 @@ async function uploadFiles(fileList) {
     return;
   }
 
+  const metaName = $('#ticket-name').value.trim().slice(0, 80);
+  const metaType = $('#ticket-type').value;
+  const metaEntries = {};
+
   state.busy = true;
   progressEl.hidden = false;
   progressBar.style.width = '0%';
@@ -909,10 +1048,13 @@ async function uploadFiles(fileList) {
       const file = accepted[i];
       setDropStatus(`Uploading ${i + 1} of ${accepted.length}: ${file.name}`);
       try {
-        await putFile(file, makeStoredName(file.name), (frac) => {
+        const created = await putFile(file, makeStoredName(file.name), (frac) => {
           progressBar.style.width = `${Math.round(((i + frac) / accepted.length) * 100)}%`;
         });
         ok.push(file.name);
+        if ((metaName || metaType) && created && created.path) {
+          metaEntries[created.path] = { name: metaName, type: metaType };
+        }
       } catch (err) {
         if (err.status === 401) {
           sessionExpired('Your GitHub token was rejected during upload. Paste a fresh token to reconnect.');
@@ -922,6 +1064,15 @@ async function uploadFiles(fileList) {
         failures.push(`${file.name}: ${err.message}`);
       }
       if (i < accepted.length - 1) await sleep(UPLOAD_DELAY_MS);
+    }
+
+    if (Object.keys(metaEntries).length) {
+      try {
+        await updateMeta(metaEntries);
+        $('#ticket-name').value = '';
+      } catch (mErr) {
+        toast('Ticket details not saved', mErr.message || 'Metadata update failed.', 'error');
+      }
     }
 
     if (ok.length) {
@@ -962,7 +1113,7 @@ async function uploadFiles(fileList) {
 
 dropPanel.addEventListener('drop', (event) => uploadFiles(event.dataTransfer.files));
 dropPanel.addEventListener('click', (event) => {
-  if (event.target.closest('button, a, input')) return;
+  if (event.target.closest('button, a, input, select, label, .upload-fields')) return;
   fileInput.click();
 });
 $('#browse-btn').addEventListener('click', (event) => {

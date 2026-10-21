@@ -43,6 +43,10 @@ After setup, unlocking only needs the 6-digit passcode.
 - **Transport:** everything happens over HTTPS to `api.github.com`; the site's CSP allows connections only to `api.github.com`.
 - **Files:** stored as git blobs in a private repo. Anyone with read access to that repo can see the files; git history retains deleted files (deletion removes them from the latest tree).
 
+## Ticket details (Name & Ticket type)
+
+The upload panel has two optional fields — **Name** (traveler or label) and **Ticket type** (Flight, Train, Bus, …). They apply to the batch you upload next and are saved in **`ticket-meta.json`** at the root of the vault repo (a small manifest mapping each file to its metadata — no server needed). Metadata shows on file cards and in search, and is cleaned up automatically when you delete a file.
+
 ## Limits
 
 | Limit | Value | Why |

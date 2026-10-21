@@ -153,6 +153,34 @@ async function cleanup(path, sha) {
 
   if (binSha) await cleanup(binName, binSha);
 
+  // 10. metadata manifest mechanics (same as ticket-meta.json, at a smoke path)
+  const metaPath = `__smoke__${stamp}-meta.json`;
+  const metaV1 = JSON.stringify({ version: 1, files: { 'files/a.pdf': { name: 'Ada', type: 'Flight' } } });
+  const metaPut = await api(`/repos/${encPath(REPO)}/contents/${encPath(metaPath)}`, {
+    method: 'PUT',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message: 'smoke: meta v1', content: Buffer.from(metaV1).toString('base64'), branch })
+  });
+  check('PUT metadata manifest (create)', metaPut.status === 201, `status ${metaPut.status}`);
+  const metaSha = metaPut.data && metaPut.data.content && metaPut.data.content.sha;
+
+  const metaGet = await api(`/repos/${encPath(REPO)}/contents/${encPath(metaPath)}?ref=${branch}`, { headers: headers() });
+  const metaDecoded = metaGet.data && metaGet.data.content
+    ? Buffer.from(String(metaGet.data.content).replace(/\s/g, ''), 'base64').toString('utf8')
+    : '';
+  check('GET manifest base64 roundtrip (strips newlines)', metaDecoded === metaV1);
+
+  const metaV2 = JSON.stringify({ version: 1, files: { 'files/a.pdf': { name: 'Ada', type: 'Flight' }, 'files/b.pdf': { name: 'Bo', type: 'Train' } } }, null, 2);
+  const metaPut2 = await api(`/repos/${encPath(REPO)}/contents/${encPath(metaPath)}`, {
+    method: 'PUT',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message: 'smoke: meta v2', content: Buffer.from(metaV2).toString('base64'), branch, sha: metaSha })
+  });
+  check('PUT manifest update with sha', metaPut2.status === 200, `status ${metaPut2.status}`);
+  const metaSha2 = metaPut2.data && metaPut2.data.content && metaPut2.data.content.sha;
+
+  if (metaSha2) await cleanup(metaPath, metaSha2);
+
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} checks passed`);
   process.exit(failed ? 1 : 0);

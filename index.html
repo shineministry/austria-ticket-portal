@@ -155,6 +155,28 @@
             <p class="drop-hint">or <button type="button" class="link-btn" id="browse-btn">browse your device</button></p>
           </div>
         </div>
+        <div class="upload-fields">
+          <label class="field">
+            <span>Name</span>
+            <input id="ticket-name" type="text" maxlength="80" placeholder="Traveler or label (optional)" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field">
+            <span>Ticket type</span>
+            <select id="ticket-type">
+              <option value="">Not set</option>
+              <option>Flight</option>
+              <option>Train</option>
+              <option>Bus</option>
+              <option>Ferry</option>
+              <option>Hotel</option>
+              <option>Event</option>
+              <option>Insurance</option>
+              <option>Visa</option>
+              <option>Other</option>
+            </select>
+          </label>
+        </div>
+        <p class="fields-hint">Name and type are saved with the files you upload next.</p>
         <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
         <div class="drop-status" id="drop-status" hidden></div>
       </section>
@@ -204,6 +226,7 @@
           <p class="lightbox-sub" id="lb-sub"></p>
         </div>
         <div class="lightbox-actions">
+          <button class="btn btn-ghost btn-sm" id="lb-open" hidden>Open in tab</button>
           <a class="btn btn-outline btn-sm" id="lb-download" href="#" download>Download</a>
           <button class="btn btn-ghost btn-sm" id="lb-close" aria-label="Close preview">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
