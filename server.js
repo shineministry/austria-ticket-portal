@@ -12,13 +12,22 @@ const { EXT_MIME, MAX_FILE_BYTES, MAX_FILES_PER_BATCH, extOf, sanitizeName, kind
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// Optional subpath mount, e.g. BASE_PATH=/public for reverse proxies.
+const BASE_PATH = (() => {
+  const raw = String(process.env.BASE_PATH || '').trim();
+  if (!raw || raw === '/') return '';
+  const trimmed = raw.replace(/\/+$/, '');
+  return trimmed.startsWith('/') ? trimmed : '/' + trimmed;
+})();
 
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '16kb' }));
 
-app.use((req, res, next) => {
+const site = express.Router();
+site.use(express.json({ limit: '16kb' }));
+
+site.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
@@ -46,7 +55,7 @@ app.use((req, res, next) => {
 });
 
 // CSRF hardening: browser state-changing requests must be same-origin.
-app.use((req, res, next) => {
+site.use((req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   const origin = req.headers.origin;
   if (origin) {
@@ -111,7 +120,7 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES_PER_BATCH }
 });
 
-app.post('/api/login', loginLimiter, (req, res) => {
+site.post('/api/login', loginLimiter, (req, res) => {
   if (!auth.hasPasscode()) {
     return res.status(503).json({ error: 'No passcode configured. Run: npm run set-passcode' });
   }
@@ -127,24 +136,24 @@ app.post('/api/login', loginLimiter, (req, res) => {
   res.json({ ok: true, files: store.list().map(publicFile), stats: store.stats() });
 });
 
-app.post('/api/logout', (req, res) => {
+site.post('/api/logout', (req, res) => {
   const token = auth.sessionTokenFrom(req);
   auth.destroySession(token);
   res.clearCookie(auth.COOKIE_NAME, { path: '/', httpOnly: true, sameSite: 'strict' });
   res.json({ ok: true });
 });
 
-app.get('/api/session', (req, res) => {
+site.get('/api/session', (req, res) => {
   const session = auth.getSession(auth.sessionTokenFrom(req));
   if (!session) return res.status(401).json({ error: 'Not signed in.' });
   res.json({ ok: true, files: store.list().map(publicFile), stats: store.stats() });
 });
 
-app.get('/api/files', generalLimiter, requireAuth, (req, res) => {
+site.get('/api/files', generalLimiter, requireAuth, (req, res) => {
   res.json({ files: store.list().map(publicFile), stats: store.stats() });
 });
 
-app.post('/api/files', generalLimiter, uploadLimiter, requireAuth, (req, res) => {
+site.post('/api/files', generalLimiter, uploadLimiter, requireAuth, (req, res) => {
   upload.array('files', MAX_FILES_PER_BATCH)(req, res, (err) => {
     if (err) {
       const message =
@@ -191,7 +200,7 @@ app.post('/api/files', generalLimiter, uploadLimiter, requireAuth, (req, res) =>
   });
 });
 
-app.get('/api/files/:id', generalLimiter, requireAuth, (req, res) => {
+site.get('/api/files/:id', generalLimiter, requireAuth, (req, res) => {
   const file = store.get(req.params.id);
   if (!file) return res.status(404).json({ error: 'File not found.' });
   const inline = req.query.disposition === 'inline';
@@ -210,27 +219,29 @@ app.get('/api/files/:id', generalLimiter, requireAuth, (req, res) => {
   stream.pipe(res);
 });
 
-app.delete('/api/files/:id', generalLimiter, requireAuth, (req, res) => {
+site.delete('/api/files/:id', generalLimiter, requireAuth, (req, res) => {
   const removed = store.remove(req.params.id);
   if (!removed) return res.status(404).json({ error: 'File not found.' });
   res.json({ ok: true, stats: store.stats() });
 });
 
-app.use(express.static(PUBLIC_DIR, { index: 'index.html', maxAge: '1h', etag: true }));
+site.use(express.static(PUBLIC_DIR, { index: 'index.html', maxAge: '1h', etag: true }));
 
-app.use((req, res, next) => {
+site.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
+site.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Unexpected server error.' });
 });
 
+app.use(BASE_PATH || '/', site);
+
 app.listen(PORT, HOST, () => {
-  console.log(`Austria Ticket Portal running at http://localhost:${PORT}`);
+  console.log(`Austria Ticket Portal running at http://localhost:${PORT}${BASE_PATH}`);
   if (!auth.hasPasscode()) {
     console.warn('WARNING: no passcode configured. Run `npm run set-passcode` before signing in.');
   }

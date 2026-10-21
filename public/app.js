@@ -143,7 +143,7 @@ passcodeForm.addEventListener('submit', async (event) => {
   label.textContent = 'Checking…';
 
   try {
-    const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ passcode }) });
+    const data = await api('api/login', { method: 'POST', body: JSON.stringify({ passcode }) });
     codeBoxes.forEach((box) => { box.value = ''; box.classList.remove('filled'); });
     enterApp(data.files || [], data.stats);
   } catch (err) {
@@ -162,7 +162,7 @@ passcodeForm.addEventListener('submit', async (event) => {
 });
 
 $('#logout-btn').addEventListener('click', async () => {
-  try { await api('/api/logout', { method: 'POST' }); } catch (_) { /* ignore */ }
+  try { await api('api/logout', { method: 'POST' }); } catch (_) { /* ignore */ }
   showGate();
   toast('Signed out', 'Your session has been closed.');
 });
@@ -194,7 +194,7 @@ function visibleFiles() {
 }
 
 function thumbMarkup(file) {
-  const url = `/api/files/${file.id}?disposition=inline`;
+  const url = `api/files/${file.id}?disposition=inline`;
   if (file.kind === 'image') {
     return `<div class="thumb" data-preview="${file.id}"><img src="${url}" alt="${esc(file.name)}" loading="lazy" /></div>`;
   }
@@ -212,7 +212,7 @@ function cardMarkup(file) {
         <p class="file-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}</p>
         <span class="list-meta">${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}</span>
         <div class="file-actions">
-          <a class="btn btn-outline btn-sm" href="/api/files/${file.id}" download>Download</a>
+          <a class="btn btn-outline btn-sm" href="api/files/${file.id}" download>Download</a>
           ${file.kind === 'image' || file.kind === 'document'
             ? `<button class="btn btn-ghost btn-sm" data-preview="${file.id}">Preview</button>` : ''}
           <span class="spacer"></span>
@@ -263,7 +263,7 @@ searchInput.addEventListener('input', () => {
 
 $('#refresh-btn').addEventListener('click', async () => {
   try {
-    const data = await api('/api/files');
+    const data = await api('api/files');
     state.files = data.files || [];
     render();
     toast('List refreshed');
@@ -281,7 +281,7 @@ filesEl.addEventListener('click', async (event) => {
     if (!window.confirm(`Delete “${file.name}”? This cannot be undone.`)) return;
     deleteBtn.disabled = true;
     try {
-      await api(`/api/files/${id}`, { method: 'DELETE' });
+      await api(`api/files/${id}`, { method: 'DELETE' });
       state.files = state.files.filter((f) => f.id !== id);
       render();
       toast('File deleted', file.name);
@@ -308,10 +308,10 @@ function openPreview(id) {
   if (!file) return;
   $('#lb-name').textContent = file.name;
   $('#lb-sub').textContent = `${fmtBytes(file.size)} · ${fmtDate(file.uploadedAt)}`;
-  $('#lb-download').href = `/api/files/${file.id}`;
+  $('#lb-download').href = `api/files/${file.id}`;
 
   const body = $('#lb-body');
-  const url = `/api/files/${file.id}?disposition=inline`;
+  const url = `api/files/${file.id}?disposition=inline`;
   if (file.kind === 'image') {
     body.innerHTML = `<img src="${url}" alt="${esc(file.name)}" />`;
   } else if (file.ext === 'pdf') {
@@ -322,7 +322,7 @@ function openPreview(id) {
     body.innerHTML = `<div class="fallback">
       <p><strong>${esc(file.name)}</strong></p>
       <p>Preview is not available for this file type.</p>
-      <a class="btn btn-primary btn-sm" href="/api/files/${file.id}">Download file</a>
+      <a class="btn btn-primary btn-sm" href="api/files/${file.id}">Download file</a>
     </div>`;
   }
   lightbox.hidden = false;
@@ -370,7 +370,7 @@ function uploadFiles(fileList) {
   files.forEach((file) => form.append('files', file));
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/files');
+  xhr.open('POST', 'api/files');
   xhr.withCredentials = true;
 
   state.busy = true;
@@ -469,7 +469,7 @@ function handleError(err) {
 (async function boot() {
   codeBoxes[0].focus();
   try {
-    const data = await api('/api/session');
+    const data = await api('api/session');
     enterApp(data.files || [], data.stats);
   } catch (_) {
     showGate();

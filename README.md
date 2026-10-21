@@ -45,6 +45,36 @@ config/auth.json # scrypt salt + hash only (generated, git-ignored)
 
 Everything user-specific lives under `data/` and `config/`, both git-ignored. Only the salted hash of the passcode is written — never the passcode.
 
+## Deploying
+
+> **Important:** GitHub Pages is static-only hosting and **cannot run this app** (the passcode gate and uploads need the Node backend). Deploy to a Node host instead.
+
+### Option A — Render (free, one-click)
+
+1. Push this repo to GitHub (already done if you're reading it there).
+2. On [render.com](https://render.com), **New → Blueprint** and pick this repo — `render.yaml` provisions everything, including a persistent disk for uploads.
+3. Render sets a random `PASSCODE` env var on first deploy. Find it under **Environment → PASSCODE** in the dashboard, or replace it with your own 6-digit code and redeploy.
+4. Your app is live at `https://<name>.onrender.com`.
+
+### Option B — any VPS / Node host
+
+```bash
+npm install
+PASSCODE=123456 npm start        # passcode via env var (no config file needed)
+# or:
+npm run set-passcode && npm start # passcode hashed to config/auth.json
+```
+
+### Environment variables
+
+| Var         | Default | Purpose                                                            |
+| ----------- | ------- | ------------------------------------------------------------------ |
+| `PORT`      | `3000`  | HTTP port                                                          |
+| `HOST`      | `0.0.0.0` | Bind address                                                     |
+| `PASSCODE`  | —       | 6-digit passcode (used when `config/auth.json` is absent)          |
+| `BASE_PATH` | —       | Serve under a subpath, e.g. `/public` (for reverse proxies)        |
+| `DATA_DIR`  | `./data`| Where uploads are stored (set to a mounted disk path in production)|
+
 ## Production tips
 
 - Put it behind HTTPS (e.g. Caddy / nginx / Cloudflare). The app enables HSTS and secure cookies automatically when `req.secure` is true.

@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: austria-ticket-portal
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PASSCODE
+        generateValue: true
+      - key: BASE_PATH
+        value: ""
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: portal-data
+      mountPath: /var/data
+      sizeGB: 1
