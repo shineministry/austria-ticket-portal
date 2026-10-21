@@ -37,7 +37,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-.hidden { display: none !important; }
+.hidden, [hidden] { display: none !important; }
 
 button, input { font: inherit; color: inherit; }
 
