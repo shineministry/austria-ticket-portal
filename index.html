@@ -176,7 +176,20 @@
             </select>
           </label>
         </div>
-        <p class="fields-hint">Name and type are saved with the files you upload next.</p>
+        <p class="fields-hint">Fill in the details, then press <strong>Save &amp; upload</strong>. Files wait in the queue until you save.</p>
+
+        <div class="queue" id="queue" hidden>
+          <div class="queue-head">
+            <span class="queue-count" id="queue-count">0 files ready</span>
+            <button type="button" class="link-btn link-btn--quiet" id="queue-clear">Clear all</button>
+          </div>
+          <ul class="queue-list" id="queue-list"></ul>
+        </div>
+
+        <div class="upload-row">
+          <button type="button" class="btn btn-primary" id="upload-btn" disabled>Save &amp; upload</button>
+        </div>
+
         <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
         <div class="drop-status" id="drop-status" hidden></div>
       </section>
@@ -196,7 +209,7 @@
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><rect x="3" y="4" width="18" height="4" rx="2"/><rect x="3" y="10" width="18" height="4" rx="2"/><rect x="3" y="16" width="18" height="4" rx="2"/></svg>
               </button>
             </div>
-            <button class="btn btn-outline btn-sm" id="select-btn">Upload files</button>
+            <button class="btn btn-outline btn-sm" id="select-btn">Add files</button>
           </div>
         </div>
 
@@ -234,6 +247,32 @@
         </div>
       </div>
       <div class="lightbox-body" id="lb-body"></div>
+    </div>
+  </div>
+
+  <!-- Ticket details modal -->
+  <div class="modal" id="meta-modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="meta-modal-title">
+      <div class="modal-head">
+        <p id="meta-modal-title" class="modal-title">Ticket details</p>
+        <button class="btn btn-ghost btn-sm" id="meta-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="modal-file" id="meta-file"></p>
+      <label class="field">
+        <span>Name</span>
+        <input id="meta-name" type="text" maxlength="80" placeholder="Traveler or label" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Ticket type</span>
+        <select id="meta-type"></select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="meta-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="meta-save">Save details</button>
+      </div>
     </div>
   </div>
 

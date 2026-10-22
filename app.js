@@ -64,10 +64,20 @@ const progressBar = $('#progress-bar');
 const progressEl = $('#progress');
 const dropStatus = $('#drop-status');
 const lightbox = $('#lightbox');
+const queueEl = $('#queue');
+const queueList = $('#queue-list');
+const queueCount = $('#queue-count');
+const uploadBtn = $('#upload-btn');
+const ticketNameInput = $('#ticket-name');
+const ticketTypeSelect = $('#ticket-type');
+const metaModal = $('#meta-modal');
+const metaNameInput = $('#meta-name');
+const metaTypeSelect = $('#meta-type');
 
 const state = {
   files: [],
   meta: new Map(), // path -> { name, type }
+  queue: [], // staged File objects awaiting "Save & upload"
   view: localStorage.getItem('atp.view') || 'grid',
   query: '',
   busy: false
@@ -75,6 +85,7 @@ const state = {
 
 let vault = null; // { token, repo, branch } — memory only after unlock
 let previewToken = 0;
+let metaTargetPath = null;
 
 /* ---------------- helpers ---------------- */
 
@@ -709,6 +720,7 @@ function cardMarkup(file) {
         <div class="file-actions">
           <button class="btn btn-outline btn-sm" data-download="${esc(file.path)}">Download</button>
           ${previewable ? `<button class="btn btn-ghost btn-sm" data-preview="${esc(file.path)}">Preview</button>` : ''}
+          <button class="btn btn-ghost btn-sm" data-edit="${esc(file.path)}" aria-label="Edit details for ${esc(file.name)}">Details</button>
           <span class="spacer"></span>
           <button class="btn btn-ghost btn-sm btn-danger-ghost" data-delete="${esc(file.path)}" aria-label="Delete ${esc(file.name)}">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
@@ -819,6 +831,12 @@ filesEl.addEventListener('click', async (event) => {
   if (previewBtn) {
     const path = previewBtn.getAttribute('data-preview');
     if (path) openPreview(path);
+    return;
+  }
+
+  const editBtn = event.target.closest('[data-edit]');
+  if (editBtn) {
+    openMetaModal(editBtn.getAttribute('data-edit'));
   }
 });
 
@@ -879,6 +897,53 @@ async function saveFile(path) {
   link.click();
   link.remove();
 }
+
+/* ---------------- ticket details modal ---------------- */
+
+function openMetaModal(path) {
+  const file = state.files.find((f) => f.path === path);
+  if (!file) return;
+  metaTargetPath = path;
+  $('#meta-file').textContent = file.name;
+  const m = metaFor(path) || {};
+  metaNameInput.value = m.name || '';
+  metaTypeSelect.value = m.type || '';
+  metaModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => metaNameInput.focus(), 40);
+}
+
+function closeMetaModal() {
+  metaTargetPath = null;
+  metaModal.hidden = true;
+  if (lightbox.hidden) document.body.style.overflow = '';
+}
+
+$('#meta-close').addEventListener('click', closeMetaModal);
+$('#meta-cancel').addEventListener('click', closeMetaModal);
+metaModal.addEventListener('click', (event) => {
+  if (event.target.hasAttribute('data-close')) closeMetaModal();
+});
+
+$('#meta-save').addEventListener('click', async () => {
+  if (!metaTargetPath) return;
+  const path = metaTargetPath;
+  const file = state.files.find((f) => f.path === path);
+  const name = metaNameInput.value.trim().slice(0, 80);
+  const type = metaTypeSelect.value;
+  const btn = $('#meta-save');
+  btn.disabled = true;
+  try {
+    await updateMeta({ [path]: name || type ? { name, type } : null });
+    render();
+    toast('Details saved', file ? file.name : '');
+    closeMetaModal();
+  } catch (err) {
+    handleError(err);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* ---------------- lightbox ---------------- */
 
@@ -948,7 +1013,9 @@ lightbox.addEventListener('click', (event) => {
   if (event.target.hasAttribute('data-close')) closePreview();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !lightbox.hidden) closePreview();
+  if (event.key !== 'Escape') return;
+  if (!metaModal.hidden) { closeMetaModal(); return; }
+  if (!lightbox.hidden) closePreview();
 });
 
 /* ---------------- uploads ---------------- */
@@ -1008,91 +1075,129 @@ async function putFile(file, storedName, onProgress) {
   });
 }
 
-async function uploadFiles(fileList) {
-  const all = Array.from(fileList || []);
-  if (!all.length) return;
+function stageFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (!vault) return;
+
+  const rejected = [];
+  for (const file of files) {
+    const ext = extOf(file.name);
+    if (file.size > MAX_FILE_BYTES) rejected.push(`${file.name} (over 25 MB)`);
+    else if (!ALLOWED_EXTS.includes(ext)) rejected.push(`${file.name} (unsupported type)`);
+    else state.queue.push(file);
+  }
+
+  renderQueue();
+  if (state.queue.length) {
+    setDropStatus(`${state.queue.length} file${state.queue.length === 1 ? '' : 's'} staged — fill in details, then press Save & upload.`);
+  }
+  if (rejected.length) {
+    toast('Some files were skipped', rejected.slice(0, 3).join(', '), 'error');
+  }
+  fileInput.value = '';
+}
+
+function renderQueue() {
+  const n = state.queue.length;
+  queueEl.hidden = n === 0;
+  queueCount.textContent = `${n} file${n === 1 ? '' : 's'} ready`;
+  queueList.innerHTML = state.queue.map((file, i) => `
+    <li class="queue-item">
+      <span class="queue-name" title="${esc(file.name)}">${esc(file.name)}</span>
+      <span class="queue-size">${fmtBytes(file.size)}</span>
+      <button type="button" class="queue-remove" data-remove="${i}" aria-label="Remove ${esc(file.name)}">&times;</button>
+    </li>`).join('');
+  uploadBtn.disabled = n === 0 || state.busy;
+}
+
+queueList.addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-remove]');
+  if (!btn) return;
+  state.queue.splice(Number(btn.getAttribute('data-remove')), 1);
+  renderQueue();
+  if (!state.queue.length) setDropStatus('');
+});
+
+$('#queue-clear').addEventListener('click', () => {
+  state.queue = [];
+  renderQueue();
+  setDropStatus('');
+});
+
+uploadBtn.addEventListener('click', () => runUpload());
+
+async function runUpload() {
   if (!vault) return;
   if (state.busy) {
     toast('An upload is already in progress', 'Please wait for it to finish.', 'error');
     return;
   }
+  if (!state.queue.length) return;
 
-  const accepted = [];
-  const rejected = [];
-  for (const file of all) {
-    const ext = extOf(file.name);
-    if (file.size > MAX_FILE_BYTES) rejected.push(`${file.name} (over 25 MB)`);
-    else if (!ALLOWED_EXTS.includes(ext)) rejected.push(`${file.name} (unsupported type)`);
-    else accepted.push(file);
-  }
-
-  if (!accepted.length) {
-    toast('No files uploaded', rejected.slice(0, 3).join(', ') || 'Nothing suitable selected.', 'error');
-    fileInput.value = '';
-    return;
-  }
-
-  const metaName = $('#ticket-name').value.trim().slice(0, 80);
-  const metaType = $('#ticket-type').value;
+  const batch = [...state.queue];
+  const metaName = ticketNameInput.value.trim().slice(0, 80);
+  const metaType = ticketTypeSelect.value;
   const metaEntries = {};
 
   state.busy = true;
+  uploadBtn.disabled = true;
   progressEl.hidden = false;
   progressBar.style.width = '0%';
 
-  const ok = [];
-  const failures = [];
+  const uploaded = [];
+  const failedNames = [];
 
   try {
-    for (let i = 0; i < accepted.length; i++) {
-      const file = accepted[i];
-      setDropStatus(`Uploading ${i + 1} of ${accepted.length}: ${file.name}`);
+    for (let i = 0; i < batch.length; i++) {
+      const file = batch[i];
+      setDropStatus(`Uploading ${i + 1} of ${batch.length}: ${file.name}`);
       try {
         const created = await putFile(file, makeStoredName(file.name), (frac) => {
-          progressBar.style.width = `${Math.round(((i + frac) / accepted.length) * 100)}%`;
+          progressBar.style.width = `${Math.round(((i + frac) / batch.length) * 100)}%`;
         });
-        ok.push(file.name);
+        uploaded.push(file);
         if ((metaName || metaType) && created && created.path) {
           metaEntries[created.path] = { name: metaName, type: metaType };
         }
       } catch (err) {
         if (err.status === 401) {
           sessionExpired('Your GitHub token was rejected during upload. Paste a fresh token to reconnect.');
-          fileInput.value = '';
+          state.queue = [];
+          renderQueue();
           return;
         }
-        failures.push(`${file.name}: ${err.message}`);
+        failedNames.push(`${file.name}: ${err.message}`);
       }
-      if (i < accepted.length - 1) await sleep(UPLOAD_DELAY_MS);
+      if (i < batch.length - 1) await sleep(UPLOAD_DELAY_MS);
     }
+
+    state.queue = state.queue.filter((file) => !uploaded.includes(file));
 
     if (Object.keys(metaEntries).length) {
       try {
         await updateMeta(metaEntries);
-        $('#ticket-name').value = '';
+        ticketNameInput.value = '';
       } catch (mErr) {
         toast('Ticket details not saved', mErr.message || 'Metadata update failed.', 'error');
       }
     }
 
-    if (ok.length) {
+    if (uploaded.length) {
       await refreshList({ silent: true });
-      setDropStatus(`Uploaded ${ok.length} file${ok.length === 1 ? '' : 's'}.`);
-      toast('Upload complete', ok.slice(0, 2).join(', ') + (ok.length > 2 ? ` +${ok.length - 2} more` : ''));
+      setDropStatus(`Uploaded ${uploaded.length} file${uploaded.length === 1 ? '' : 's'}.`);
+      toast('Upload complete', uploaded.map((f) => f.name).slice(0, 2).join(', ') + (uploaded.length > 2 ? ` +${uploaded.length - 2} more` : ''));
       setTimeout(() => setDropStatus(''), 5000);
     }
-    if (failures.length) {
-      setDropStatus(`${failures.length} upload${failures.length === 1 ? '' : 's'} failed.`, true);
-      toast('Upload failed', failures.slice(0, 2).join(' · '), 'error');
-    }
-    if (rejected.length) {
-      toast('Some files were skipped', rejected.slice(0, 3).join(', '), 'error');
+    if (failedNames.length) {
+      setDropStatus(`${failedNames.length} upload${failedNames.length === 1 ? '' : 's'} failed — they stay in the queue, press Save & upload to retry.`, true);
+      toast('Upload failed', failedNames.slice(0, 2).join(' · '), 'error');
     }
   } finally {
     state.busy = false;
     progressEl.hidden = true;
     progressBar.style.width = '0%';
-    fileInput.value = '';
+    renderQueue();
   }
 }
 
@@ -1111,9 +1216,9 @@ async function uploadFiles(fileList) {
   });
 });
 
-dropPanel.addEventListener('drop', (event) => uploadFiles(event.dataTransfer.files));
+dropPanel.addEventListener('drop', (event) => stageFiles(event.dataTransfer.files));
 dropPanel.addEventListener('click', (event) => {
-  if (event.target.closest('button, a, input, select, label, .upload-fields')) return;
+  if (event.target.closest('button, a, input, select, label, .upload-fields, .queue, .upload-row')) return;
   fileInput.click();
 });
 $('#browse-btn').addEventListener('click', (event) => {
@@ -1121,14 +1226,12 @@ $('#browse-btn').addEventListener('click', (event) => {
   fileInput.click();
 });
 $('#select-btn').addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', () => {
-  uploadFiles(fileInput.files);
-  fileInput.value = '';
-});
+fileInput.addEventListener('change', () => stageFiles(fileInput.files));
 
 /* ---------------- boot ---------------- */
 
 (function boot() {
+  metaTypeSelect.innerHTML = ticketTypeSelect.innerHTML;
   setView(state.view);
   if (loadVault()) showGate();
   else showSetup();

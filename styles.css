@@ -341,6 +341,97 @@ button, input { font: inherit; color: inherit; }
 }
 .upload-fields .field { flex: 1 1 190px; margin-bottom: 0; }
 .fields-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--muted-2); }
+.fields-hint strong { color: var(--muted); }
+
+/* ---------- Upload queue ---------- */
+.queue {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.queue-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.queue-count { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 170px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.queue-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.queue-size { color: var(--muted-2); font-size: 12px; flex: 0 0 auto; }
+.queue-remove {
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 6px;
+}
+.queue-remove:hover { color: var(--accent); background: var(--accent-soft); }
+
+.upload-row { margin-top: 14px; }
+#upload-btn { padding: 12px 18px; }
+
+/* ---------- Details modal ---------- */
+.modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(15, 20, 32, .5); backdrop-filter: blur(3px); }
+.modal-card {
+  position: relative;
+  width: min(430px, 100%);
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 20px 20px 18px;
+  animation: pop .18s ease both;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+.modal-title { margin: 0; font-size: 16px; font-weight: 700; }
+.modal-file {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
 
 /* ---------- Metadata chips ---------- */
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }

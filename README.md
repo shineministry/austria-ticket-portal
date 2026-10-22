@@ -45,7 +45,7 @@ After setup, unlocking only needs the 6-digit passcode.
 
 ## Ticket details (Name & Ticket type)
 
-The upload panel has two optional fields — **Name** (traveler or label) and **Ticket type** (Flight, Train, Bus, …). They apply to the batch you upload next and are saved in **`ticket-meta.json`** at the root of the vault repo (a small manifest mapping each file to its metadata — no server needed). Metadata shows on file cards and in search, and is cleaned up automatically when you delete a file.
+Uploads are **staged, not immediate**: drop or pick files → they wait in a queue → fill in **Name** (traveler or label) and **Ticket type** (Flight, Train, Bus, …) → press **Save & upload**. Details apply to every file in that batch and are saved in **`ticket-meta.json`** at the root of the vault repo (a small manifest mapping each file to its metadata — no server needed). Metadata shows on file cards and in search; the **Details** button on any card edits or removes it later, and it is cleaned up automatically when you delete a file.
 
 ## Limits
 
